@@ -8,7 +8,7 @@ import numpy as np
 
 app = Flask(__name__)
 
-# Initialize EasyOCR reader (downloads model on first run)
+# Initialize EasyOCR reader
 reader = easyocr.Reader(['en'])
 
 HTML = '''
@@ -29,26 +29,25 @@ HTML = '''
         textarea { width: 100%; height: 200px; margin: 10px 0; padding: 10px; }
         .download-btn { background: #28a745; margin-top: 15px; }
         .download-btn:hover { background: #1e7e34; }
-        img { max-width: 100%; margin: 20px 0; border-radius: 5px; }
         .note { font-size: 12px; color: #666; text-align: center; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📄 Image Text Extractor</h1>
+        <h1>Image Text Extractor</h1>
         <p style="text-align: center;">Upload an image to extract text and generate PDF</p>
-        <p class="note">Powered by EasyOCR - works with handwritten text!</p>
+        <p class="note">Powered by EasyOCR - AI-based text recognition</p>
 
         <form class="upload-form" method="POST" enctype="multipart/form-data">
             <input type="file" name="image" accept="image/*" required><br>
-            <button type="submit">🔍 Extract Text & Generate PDF</button>
+            <button type="submit">Extract Text & Generate PDF</button>
         </form>
 
         {% if extracted_text %}
         <div class="result">
-            <h3>📝 Extracted Text:</h3>
+            <h3>Extracted Text:</h3>
             <textarea readonly>{{ extracted_text }}</textarea>
-            <a href="/download"><button class="download-btn">📥 Download PDF</button></a>
+            <a href="/download"><button class="download-btn">Download PDF</button></a>
         </div>
         {% endif %}
     </div>
@@ -64,10 +63,8 @@ def index():
         if 'image' in request.files:
             file = request.files['image']
             if file.filename:
-                # Save uploaded image
+                # Open image
                 img = Image.open(file)
-
-                # Convert to numpy array for EasyOCR
                 img_array = np.array(img)
 
                 # Extract text using EasyOCR
