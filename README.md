@@ -1,37 +1,42 @@
 ---
-title: Image Text and Diagram Extractor
+title: Image Text Extractor
 emoji: 📄
 colorFrom: blue
 colorTo: purple
-sdk: gradio
-sdk_version: 4.44.0
-app_file: app.py
+sdk: docker
 pinned: false
 ---
 
-# Image Text & Diagram Extractor
+# Image Text Extractor
 
-Upload images containing text, notes, diagrams, or handwritten content. The app will:
-
-1. **Extract text** using Tesseract OCR
-2. **Generate a PDF** containing both the original images and extracted text
+A web application that extracts text from images using OCR and generates PDF documents.
 
 ## Features
 
-- Supports multiple image uploads
-- Preserves original images in output PDF
-- Extracts text from printed and handwritten content
-- Download PDF or copy text directly
-
-## Usage
-
-1. Upload one or more images
-2. Click "Extract & Generate PDF"
-3. Download the generated PDF or copy the extracted text
+- Upload images (JPG, PNG, etc.)
+- Extract text using EasyOCR (AI-powered)
+- Generate PDF with original image and extracted text
+- Download the PDF
 
 ## Tech Stack
 
-- Gradio (UI)
-- Tesseract OCR (Text extraction)
-- FPDF (PDF generation)
-- Pillow (Image processing)
+- **Backend:** Flask (Python)
+- **OCR Engine:** EasyOCR
+- **PDF Generation:** FPDF2
+- **Deployment:** Docker on Hugging Face Spaces
+
+## Usage
+
+1. Upload an image containing text
+2. Click "Extract Text & Generate PDF"
+3. View extracted text
+4. Download the generated PDF
+
+## Local Development
+
+```bash
+pip install -r requirements.txt
+python app.py
+```
+
+Visit `http://localhost:7860`

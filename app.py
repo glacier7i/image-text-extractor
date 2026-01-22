@@ -1,135 +1,115 @@
-import gradio as gr
-import pytesseract
+from flask import Flask, render_template_string, request, send_file
+import easyocr
 from PIL import Image
 from fpdf import FPDF
-import os
 import tempfile
+import os
+import numpy as np
 
-# For Hugging Face Spaces - Tesseract is pre-installed
-# Locally on Windows, you may need to set the path:
-# pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+app = Flask(__name__)
 
-def extract_text_and_create_pdf(images):
-    """
-    Takes uploaded images, extracts text using OCR,
-    and creates a PDF with both text and original images.
-    """
-    if images is None or len(images) == 0:
-        return None, "Please upload at least one image."
+# Initialize EasyOCR reader (downloads model on first run)
+reader = easyocr.Reader(['en'])
 
-    # Create PDF
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
+HTML = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Image Text Extractor</title>
+    <style>
+        body { font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; background: #f5f5f5; }
+        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; text-align: center; }
+        .upload-form { text-align: center; margin: 30px 0; }
+        input[type="file"] { margin: 20px 0; }
+        button { background: #007bff; color: white; padding: 12px 30px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #0056b3; }
+        .result { margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 5px; }
+        .result h3 { margin-top: 0; }
+        textarea { width: 100%; height: 200px; margin: 10px 0; padding: 10px; }
+        .download-btn { background: #28a745; margin-top: 15px; }
+        .download-btn:hover { background: #1e7e34; }
+        img { max-width: 100%; margin: 20px 0; border-radius: 5px; }
+        .note { font-size: 12px; color: #666; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📄 Image Text Extractor</h1>
+        <p style="text-align: center;">Upload an image to extract text and generate PDF</p>
+        <p class="note">Powered by EasyOCR - works with handwritten text!</p>
 
-    all_extracted_text = []
+        <form class="upload-form" method="POST" enctype="multipart/form-data">
+            <input type="file" name="image" accept="image/*" required><br>
+            <button type="submit">🔍 Extract Text & Generate PDF</button>
+        </form>
 
-    for idx, img_path in enumerate(images):
-        # Open image
-        img = Image.open(img_path)
+        {% if extracted_text %}
+        <div class="result">
+            <h3>📝 Extracted Text:</h3>
+            <textarea readonly>{{ extracted_text }}</textarea>
+            <a href="/download"><button class="download-btn">📥 Download PDF</button></a>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
+'''
 
-        # Extract text using OCR
-        extracted_text = pytesseract.image_to_string(img)
-        all_extracted_text.append(f"--- Page {idx + 1} ---\n{extracted_text}")
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    extracted_text = None
 
-        # Add page to PDF
-        pdf.add_page()
+    if request.method == 'POST':
+        if 'image' in request.files:
+            file = request.files['image']
+            if file.filename:
+                # Save uploaded image
+                img = Image.open(file)
 
-        # Add title
-        pdf.set_font("Arial", "B", 16)
-        pdf.cell(0, 10, f"Page {idx + 1}", ln=True, align="C")
-        pdf.ln(5)
+                # Convert to numpy array for EasyOCR
+                img_array = np.array(img)
 
-        # Add original image to PDF
-        # Save temp image for PDF embedding
-        temp_img_path = os.path.join(tempfile.gettempdir(), f"temp_img_{idx}.jpg")
+                # Extract text using EasyOCR
+                results = reader.readtext(img_array)
+                extracted_text = '\n'.join([text[1] for text in results])
 
-        # Convert to RGB if necessary (for PNG with transparency)
-        if img.mode in ('RGBA', 'P'):
-            img = img.convert('RGB')
-        img.save(temp_img_path, "JPEG", quality=85)
+                if not extracted_text.strip():
+                    extracted_text = "No text detected"
 
-        # Calculate image dimensions to fit page
-        page_width = 190  # PDF page width minus margins
-        img_width, img_height = img.size
-        aspect_ratio = img_height / img_width
-        display_width = min(page_width, 170)
-        display_height = display_width * aspect_ratio
+                # Create PDF
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", "B", 16)
+                pdf.cell(0, 10, "Extracted Document", ln=True, align="C")
+                pdf.ln(10)
 
-        # Limit height
-        if display_height > 150:
-            display_height = 150
-            display_width = display_height / aspect_ratio
+                # Save temp image
+                temp_img = os.path.join(tempfile.gettempdir(), "temp.jpg")
+                if img.mode in ('RGBA', 'P'):
+                    img = img.convert('RGB')
+                img.save(temp_img, "JPEG")
 
-        # Add image centered
-        x_pos = (210 - display_width) / 2
-        pdf.image(temp_img_path, x=x_pos, y=pdf.get_y(), w=display_width)
-        pdf.ln(display_height + 10)
+                pdf.image(temp_img, x=10, w=190)
+                pdf.ln(85)
 
-        # Add extracted text section
-        pdf.set_font("Arial", "B", 12)
-        pdf.cell(0, 10, "Extracted Text:", ln=True)
-        pdf.set_font("Arial", "", 10)
+                pdf.set_font("Arial", "B", 12)
+                pdf.cell(0, 10, "Extracted Text:", ln=True)
+                pdf.set_font("Arial", "", 10)
+                clean_text = extracted_text.encode('latin-1', 'replace').decode('latin-1')
+                pdf.multi_cell(0, 5, clean_text)
 
-        # Handle text encoding and add to PDF
-        clean_text = extracted_text.encode('latin-1', 'replace').decode('latin-1')
-        pdf.multi_cell(0, 5, clean_text if clean_text.strip() else "No text detected")
+                # Save PDF
+                pdf_path = os.path.join(tempfile.gettempdir(), "output.pdf")
+                pdf.output(pdf_path)
+                os.remove(temp_img)
 
-        # Clean up temp file
-        if os.path.exists(temp_img_path):
-            os.remove(temp_img_path)
+    return render_template_string(HTML, extracted_text=extracted_text)
 
-    # Save PDF to temp file
-    output_pdf_path = os.path.join(tempfile.gettempdir(), "extracted_output.pdf")
-    pdf.output(output_pdf_path)
+@app.route('/download')
+def download():
+    pdf_path = os.path.join(tempfile.gettempdir(), "output.pdf")
+    return send_file(pdf_path, as_attachment=True, download_name="extracted_document.pdf")
 
-    # Combine all extracted text
-    full_text = "\n\n".join(all_extracted_text)
-
-    return output_pdf_path, full_text
-
-# Create Gradio Interface
-with gr.Blocks(title="Image Text & Diagram Extractor") as app:
-    gr.Markdown("""
-    # Image Text & Diagram Extractor
-    Upload images (notes, documents, diagrams) and get:
-    - **Extracted text** using OCR
-    - **PDF** with original images + extracted text
-    """)
-
-    with gr.Row():
-        with gr.Column():
-            image_input = gr.File(
-                label="Upload Images",
-                file_count="multiple",
-                file_types=["image"],
-                type="filepath"
-            )
-            submit_btn = gr.Button("Extract & Generate PDF", variant="primary")
-
-        with gr.Column():
-            pdf_output = gr.File(label="Download PDF")
-            text_output = gr.Textbox(
-                label="Extracted Text",
-                lines=15,
-                show_copy_button=True
-            )
-
-    submit_btn.click(
-        fn=extract_text_and_create_pdf,
-        inputs=[image_input],
-        outputs=[pdf_output, text_output]
-    )
-
-    gr.Markdown("""
-    ---
-    **How it works:**
-    1. Upload one or more images
-    2. Click 'Extract & Generate PDF'
-    3. Download the PDF or copy the extracted text
-
-    *Powered by Tesseract OCR*
-    """)
-
-# Launch the app
-if __name__ == "__main__":
-    app.launch()
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=7860)
